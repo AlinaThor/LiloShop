@@ -35,7 +35,7 @@ namespace LiloShop
                         RenderStartpage();
                         break;
                     case 2:
-                        RenderShop();
+                        RenderAllProducts();
                         break;
                     case 3:
                        RenderBasket();
@@ -57,7 +57,9 @@ namespace LiloShop
         private static void RenderStartpage()
         {
             Console.Clear();
-            Console.WriteLine("Välkommen till Lilo");
+
+            var welcomeBox = new MenuPlaceholder($"Välkommen till Lilo", 22, 1, new List<string> { "Världens bästa shop i ett console fönster"});
+            welcomeBox.Draw();
 
             //todo: hämta erbjudande från databasen eller visa 3 hårdkodade
             var products = _database.Products.Include(p => p.Category).Take(3).ToList();
@@ -92,11 +94,11 @@ namespace LiloShop
                 }
              
               
-                var offerBox = new MenuPlaceholder($"Erbjudande {i+1}", left, 2, offerInfo);
+                var offerBox = new MenuPlaceholder($"Erbjudande {i+1}", left, 6, offerInfo);
                 offerBox.Draw();
             }
 
-            Console.WriteLine("Välj erbjudande eller klicka enter för att komma till huvudmenyn");
+            Console.WriteLine("\n\nVälj erbjudande eller klicka enter för att komma till huvudmenyn");
 
             var userInput = Console.ReadLine();
             if (string.IsNullOrEmpty(userInput))
@@ -123,27 +125,32 @@ namespace LiloShop
             
         }
 
-        private static void RenderShop()
+        private static void RenderAllProducts()
         {
             while (true)
             {
                 Console.Clear();
-                Console.WriteLine("Välkommen till Shoppen");
+             
 
                 var products = _database.Products.ToList();
 
-                for(int i = 0; i < products.Count; i++)
+                var boxOptions = new List<string> {"",  "0: Gå tillbaka0",  };
+
+                for (int i = 0; i < products.Count; i++)
                 {
                     var product = products[i];
-                    Console.WriteLine($"{i + 1}. {product.Name} - {product.Price:C2}");
+                    boxOptions.Add($"{i + 1}. {product.Name} - {product.Price:C2}");
                 }
-                Console.WriteLine("\nVälj produktnummer för att köpa: ");
-                Console.WriteLine("0: Tillbaka till huvudmeny");
+
+                var box = new MenuPlaceholder($"Shoppen", 0, 0,boxOptions );
+                box.Draw();
+                Console.Write("Välj produktnummer för att köpa: ");
+                
 
                 var input = Console.ReadLine();
 
                if(int.TryParse(input,out var choice))
-                {
+               {
                     if(choice == 0)
                     {
                         RenderMainMenu();
@@ -152,25 +159,82 @@ namespace LiloShop
                     if(choice > 0 && choice <= products.Count)
                     {
                         var selectedProduct = products[choice - 1];
-                        Console.WriteLine($"Du valde {selectedProduct.Name}");
-                        _basket.Add( selectedProduct );
-                        Console.WriteLine($"{selectedProduct} lades till i din kundkorg "); 
-                        Console.ReadLine();
-                        RenderMainMenu();
-
+                        RenderProduct(selectedProduct, RenderAllProducts);
                     }
                     else
                     {
-                        ShowErrorInput(RenderShop);
+                        ShowErrorInput(RenderAllProducts);
                         return;
                     }
                     
                 }
                 else
                 {
-                    ShowErrorInput(RenderShop);
+                    ShowErrorInput(RenderAllProducts);
                     return;
                 }
+            }
+        }
+
+        private static void RenderProduct(Product product, Action goBackAction)
+        {
+            var boxOptions = new List<string>();
+            boxOptions.Add($"Beskrivning: {product.ProductDescription}");
+            boxOptions.Add($"Kategori: {product.Category?.Name}");
+            boxOptions.Add($"Färg: {product.Color}");
+            boxOptions.Add($"Storlek: {product.Size}");
+            boxOptions.Add($"");
+            boxOptions.Add($"0: Gå tillbaka");
+            boxOptions.Add($"1: Köp");
+            var box = new MenuPlaceholder(product.Name, 0, 0, boxOptions);
+            box.Draw();
+            var userChoice = Console.ReadLine();
+
+            if (int.TryParse(userChoice, out var choice))
+            {
+                if (choice == 0)
+                {
+                    goBackAction();
+                }
+                if (choice == 1 )
+                {
+                    Console.Write("Hur många vill du köpa: ");
+                    var quantityInput = Console.ReadLine();
+                    if(int.TryParse(quantityInput, out var quantity))
+                    {
+                        if (quantity > 0) 
+                        {
+                            //Lägg i kundkorg
+                            //Säga till användaren att produkten är lagd i kundkorg
+                            //Gå tillbaka
+                            goBackAction();
+                        }
+                        else
+                        {
+                            Console.WriteLine("Felaktigt antal, klicka enter för att försöka igen");
+                            Console.ReadLine();
+                            RenderProduct(product, goBackAction);
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Felaktigt antal, klicka enter för att försöka igen");
+                        Console.ReadLine();
+                        RenderProduct(product, goBackAction);
+                    }
+
+                }
+                else
+                {
+                    RenderProduct(product, goBackAction);
+                  
+                }
+
+            }
+            else
+            {
+                RenderProduct(product, goBackAction);
+                
             }
         }
         private static void RenderBasket()

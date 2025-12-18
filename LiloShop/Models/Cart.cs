@@ -9,7 +9,7 @@ namespace LiloShop.Models
     public class Cart
     {
         public int Id { get; set; }
-        public virtual List<CartItem> Items { get; set; }
+        public virtual List<CartItem> Items { get; set; } = new List<CartItem>();
     }
 
 }

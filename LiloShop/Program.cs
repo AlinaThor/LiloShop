@@ -1,11 +1,11 @@
 ﻿using LiloShop.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Net.WebSockets;
 
 namespace LiloShop
 {
     internal class Program
     {
-        private static List<Product> _basket = new List<Product>();
         private static Database _database = new Database(); 
 
         static void Main(string[] args)
@@ -19,7 +19,7 @@ namespace LiloShop
             var menuOptions = new List<string>
             {
                 "1.Startsidan",
-                "2.Shop",
+                "2.Se alla artiklar",
                 "3.Kundkorg",
                 "4.Sök"
             };
@@ -134,7 +134,7 @@ namespace LiloShop
 
                 var products = _database.Products.ToList();
 
-                var boxOptions = new List<string> {"",  "0: Gå tillbaka0",  };
+                var boxOptions = new List<string> {"",  "0: Gå tillbaka",  };
 
                 for (int i = 0; i < products.Count; i++)
                 {
@@ -178,8 +178,9 @@ namespace LiloShop
 
         private static void RenderProduct(Product product, Action goBackAction)
         {
+            Console.Clear();
             var boxOptions = new List<string>();
-            boxOptions.Add($"Beskrivning: {product.ProductDescription}");
+            boxOptions.Add($"Beskrivning: {product.Description}");
             boxOptions.Add($"Kategori: {product.Category?.Name}");
             boxOptions.Add($"Färg: {product.Color}");
             boxOptions.Add($"Storlek: {product.Size}");
@@ -204,6 +205,20 @@ namespace LiloShop
                     {
                         if (quantity > 0) 
                         {
+                            var cart = _database.Carts.FirstOrDefault();
+                            if(cart == null)
+                            {
+                                cart = new Cart();
+                                _database.Carts.Add(cart);
+                                _database.SaveChanges();
+                            }
+                            cart.Items.Add(new CartItem
+                            {
+                                Product = product,
+                                ProductId = product.Id,
+                                Quantity = quantity
+                            });
+                            _database.SaveChanges();
                             //Lägg i kundkorg
                             //Säga till användaren att produkten är lagd i kundkorg
                             //Gå tillbaka
@@ -244,38 +259,60 @@ namespace LiloShop
                 Console.Clear();
                 Console.WriteLine("Kungkorg");
 
-                if (!_basket.Any())
+                var items = _database.CartItems.Include(p => p.Product).ToList();
+
+                if (!items.Any())
                 {
                     Console.WriteLine("Din kundkorg är tom ");
                 }
                 else
                 {
                     decimal total = 0;
-                    for(int i = 0; i < _basket.Count; i++)
+                    for(int i = 0; i < items.Count; i++)
                     {
-                        var product = _basket[i];
-                        Console.WriteLine($"{i + 1}.{product.Name} - {product.Price:C2}");
-                        total += product.Price;
+                        var cartItem = items[i];
+                        Console.WriteLine($"{cartItem.ProductId}.{cartItem.Product.Name} - {cartItem.Product.Price:C2}");
+                        total += cartItem.Product.Price;
                     }
                     Console.WriteLine($"\nTotalt: {total:C2}");
                 }
-                Console.WriteLine("\n1. Tillbaka till huvudmenyn");
-                Console.WriteLine("\n2. Töm kundkorgen");
+                Console.WriteLine("0. Tillbaka till huvudmenyn");
+                Console.WriteLine("A. Töm hela kundkorgen");
+                Console.WriteLine("(ProduktId). Radera enskild produkt");
 
                var input = Console.ReadLine();
 
-                switch( input )
+                switch( input.ToLower() )
                 {
-                    case "1":
+                    case "0":
                         RenderMainMenu();
                         return;
-                    case "2":
-                        _basket.Clear();
+                    case "a":
+                        _database.RemoveRange(items);
+                        _database.SaveChanges();
                         Console.WriteLine("Kundkorgen är tömd"); // Fixa så man kan välja produkt att ta bort inte bara tömma hela kundkorgen
                         Console.ReadLine();
+                        RenderBasket();
                         break;
                     default:
-                        ShowErrorInput(RenderBasket);
+
+                        if(int.TryParse(input, out var productId))
+                        {
+                            var item = items.Where(x => x.ProductId == productId).FirstOrDefault();
+                            if (item != null)
+                            {
+                                _database.Remove(item);
+                                _database.SaveChanges();
+                                Console.WriteLine($"{item.Product.Name} är raderad"); // Fixa så man kan välja produkt att ta bort inte bara tömma hela kundkorgen
+                                Console.ReadLine();
+                                RenderBasket();
+                            }
+                        }
+                        else
+                        {
+                            ShowErrorInput(RenderBasket);
+                        }
+                          
                         return;
                 }
             }

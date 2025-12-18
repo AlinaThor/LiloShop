@@ -17,6 +17,7 @@ namespace LiloShop.Models
        
         public int Size { get; set; }
         public string Description { get; set; }
+        public bool IsSpecialOffer { get; set; }
 
     }
     public enum Color

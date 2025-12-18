@@ -1,4 +1,6 @@
-﻿using LiloShop.Models;
+﻿using Dapper;
+using LiloShop.Models;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
@@ -46,7 +48,7 @@ namespace LiloShop
                        RenderBasket();
                         break;
                     case 5:
-                        Console.WriteLine("Kommer till sök");
+                        RenderSearch();
                         break;
                     default:
                         ShowErrorInput(RenderMainMenu);
@@ -66,8 +68,10 @@ namespace LiloShop
             var welcomeBox = new MenuPlaceholder($"Välkommen till Lilo", 22, 1, new List<string> { "Världens bästa shop i ett console fönster"});
             welcomeBox.Draw();
 
-            //todo: hämta erbjudande från databasen eller visa 3 hårdkodade
-            var products = _database.Products.Include(p => p.Category).Take(3).ToList();
+            var products = _database.Products.Where(x => x.IsSpecialOffer)
+                .Include(p => p.Category)
+                .Take(3)
+                .ToList();
 
             for(var i = 0; i < products.Count; i++)
             {
@@ -138,15 +142,10 @@ namespace LiloShop
 
         private static void RenderAllProducts()
         {
-            while (true)
-            {
-                Console.Clear();
+            Console.Clear();
 
-
-                var products = _database.Products.ToList();
-                RenderProducts(products, RenderMainMenu);
-
-            }
+            var products = _database.Products.ToList();
+            RenderProducts(products, RenderMainMenu);
         }
 
         private static void RenderProducts(List<Product> products, Action goBackAction)
@@ -384,7 +383,37 @@ namespace LiloShop
 
         }
 
+        private static void RenderSearch()
+        {
+            Console.Clear();
+            var menuOptions = new List<string>();
+            menuOptions.Add("0. Tillbaka till huvudmenyn");
+            menuOptions.Add("Valfritt sökord");
+           
+            var optionBox = new MenuPlaceholder("Sök efter produkt", 0, 0, menuOptions);
+            optionBox.Draw();
 
+            var input = Console.ReadLine();
+
+            if(int.TryParse(input, out var number))
+            {
+                RenderMainMenu();
+            }
+            else
+            {
+                var query = $"""
+                SELECT *
+                FROM Products WHERE Name LIKE '%{input}%' OR Description LIKE '%{input}%'
+                """;
+
+                using (var conn = new SqlConnection("Server=.\\SQLExpress;Database=LilosShop;Trusted_Connection=True; TrustServerCertificate=True;"))
+                {
+                    var products =  conn.Query<Product>(query).ToList();
+                    RenderProducts(products, RenderSearch);
+                }
+            }
+
+        }
         private static void ShowErrorInput(Action actionToRunAfterErrorIsPresented, string optionalErrorText = "")
         {
             if (!string.IsNullOrEmpty(optionalErrorText))

@@ -1,4 +1,5 @@
 ﻿using LiloShop.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace LiloShop
 {
@@ -59,7 +60,7 @@ namespace LiloShop
             Console.WriteLine("Välkommen till Lilo");
 
             //todo: hämta erbjudande från databasen eller visa 3 hårdkodade
-            var products = _database.Products.Take(3).ToList();
+            var products = _database.Products.Include(p => p.Category).Take(3).ToList();
 
             for(var i = 0; i < products.Count; i++)
             {

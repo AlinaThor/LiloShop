@@ -3,6 +3,7 @@ using LiloShop;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LiloShop.Migrations
 {
     [DbContext(typeof(Database))]
-    partial class DatabaseModelSnapshot : ModelSnapshot
+    [Migration("20251218085103_RemovedCategory")]
+    partial class RemovedCategory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -68,11 +71,9 @@ namespace LiloShop.Migrations
 
             modelBuilder.Entity("LiloShop.Models.Product", b =>
                 {
-                    b.HasOne("LiloShop.Models.Category", "Category")
+                    b.HasOne("LiloShop.Models.Category", null)
                         .WithMany("Products")
                         .HasForeignKey("CategoryId");
-
-                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("LiloShop.Models.Category", b =>

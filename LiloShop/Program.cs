@@ -1,6 +1,7 @@
 ﻿using LiloShop.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 
 namespace LiloShop
 {
@@ -20,8 +21,9 @@ namespace LiloShop
             {
                 "1.Startsidan",
                 "2.Se alla artiklar",
-                "3.Kundkorg",
-                "4.Sök"
+                "3.Se alla kategorier",
+                "4.Kundkorg",
+                "5.Sök"
             };
             var mainMenu = new MenuPlaceholder("Huvudmeny", 2, 2, menuOptions);
             mainMenu.Draw();
@@ -38,9 +40,12 @@ namespace LiloShop
                         RenderAllProducts();
                         break;
                     case 3:
-                       RenderBasket();
+                        RenderCategories();
                         break;
                     case 4:
+                       RenderBasket();
+                        break;
+                    case 5:
                         Console.WriteLine("Kommer till sök");
                         break;
                     default:
@@ -110,10 +115,16 @@ namespace LiloShop
                 switch (userInput.ToLower())
                 {
                     case "a":
-                        Console.WriteLine("användaren vill köpa erbjudande a");
+                        var product = products[0];
+                        RenderProduct(product, RenderStartpage);
                         break;
                     case "b":
-                        Console.WriteLine("användaren vill köpa erbjudande b");
+                        var secondProduct = products[1];
+                        RenderProduct(secondProduct, RenderStartpage);
+                        break;
+                    case "c":
+                        var thirdProduct = products[2];
+                        RenderProduct(thirdProduct, RenderStartpage);
                         break;
                     default:
                         ShowErrorInput(RenderStartpage, "Du har angivet ett felaktigt erbjudande, försök igen");
@@ -130,49 +141,94 @@ namespace LiloShop
             while (true)
             {
                 Console.Clear();
-             
+
 
                 var products = _database.Products.ToList();
+                RenderProducts(products, RenderMainMenu);
 
-                var boxOptions = new List<string> {"",  "0: Gå tillbaka",  };
+            }
+        }
 
-                for (int i = 0; i < products.Count; i++)
+        private static void RenderProducts(List<Product> products, Action goBackAction)
+        {
+            Console.Clear ();
+            var boxOptions = new List<string> { "", "0: Gå tillbaka", };
+
+            for (int i = 0; i < products.Count; i++)
+            {
+                var product = products[i];
+                boxOptions.Add($"{i + 1}. {product.Name} - {product.Price:C2}");
+            }
+
+            var box = new MenuPlaceholder($"Shoppen", 0, 0, boxOptions);
+            box.Draw();
+            Console.Write("Välj produktnummer för att köpa: ");
+
+
+            var input = Console.ReadLine();
+
+            if (int.TryParse(input, out var choice))
+            {
+                if (choice == 0)
                 {
-                    var product = products[i];
-                    boxOptions.Add($"{i + 1}. {product.Name} - {product.Price:C2}");
+                    goBackAction();
+                    return;
                 }
-
-                var box = new MenuPlaceholder($"Shoppen", 0, 0,boxOptions );
-                box.Draw();
-                Console.Write("Välj produktnummer för att köpa: ");
-                
-
-                var input = Console.ReadLine();
-
-               if(int.TryParse(input,out var choice))
-               {
-                    if(choice == 0)
-                    {
-                        RenderMainMenu();
-                        return;
-                    }
-                    if(choice > 0 && choice <= products.Count)
-                    {
-                        var selectedProduct = products[choice - 1];
-                        RenderProduct(selectedProduct, RenderAllProducts);
-                    }
-                    else
-                    {
-                        ShowErrorInput(RenderAllProducts);
-                        return;
-                    }
-                    
+                if (choice > 0 && choice <= products.Count)
+                {
+                    var selectedProduct = products[choice - 1];
+                    RenderProduct(selectedProduct, goBackAction);
                 }
                 else
                 {
-                    ShowErrorInput(RenderAllProducts);
+                    ShowErrorInput(goBackAction);
                     return;
                 }
+
+            }
+            else
+            {
+                ShowErrorInput(goBackAction);
+                return;
+            }
+        
+        }
+
+        private static void RenderCategories()
+        {
+            Console.Clear();
+            var boxOptions = new List<string>();
+            boxOptions.Add("0: Gå tillbaka");
+            var categories = _database.Categories.Include(x => x.Products).ToList();
+            foreach(var category in categories)
+            {
+                boxOptions.Add($"{category.Id}.{category.Name}");
+            }
+            var box = new MenuPlaceholder("Kategorier", 0, 0, boxOptions);
+            box.Draw();
+         
+            Console.Write("Välj kategori: ");
+            var userChoice = Console.ReadLine();
+            if(int.TryParse(userChoice, out var categoryId))
+            {
+                if(categoryId == 0)
+                {
+                    RenderMainMenu();
+                    return;
+                }
+                var category = categories.FirstOrDefault(c => c.Id == categoryId);
+                if(category == null)
+                {
+                    ShowErrorInput(RenderCategories);
+                }
+                else
+                {
+                    RenderProducts(category.Products.ToList(), RenderCategories);
+                }
+            }
+            else
+            {
+                ShowErrorInput(RenderCategories);
             }
         }
 
@@ -219,9 +275,8 @@ namespace LiloShop
                                 Quantity = quantity
                             });
                             _database.SaveChanges();
-                            //Lägg i kundkorg
-                            //Säga till användaren att produkten är lagd i kundkorg
-                            //Gå tillbaka
+                            Console.WriteLine($"{quantity}st {product.Name} har lagts i kundkorgen, klicka enter för att gå vidare");
+                            Console.ReadLine();
                             goBackAction();
                         }
                         else
@@ -257,13 +312,15 @@ namespace LiloShop
             while (true)
             {
                 Console.Clear();
-                Console.WriteLine("Kungkorg");
+                var boxOptions = new List<string>();
+            
+              
 
                 var items = _database.CartItems.Include(p => p.Product).ToList();
 
                 if (!items.Any())
                 {
-                    Console.WriteLine("Din kundkorg är tom ");
+                    boxOptions.Add("Din kundkorg är tom ");
                 }
                 else
                 {
@@ -271,16 +328,24 @@ namespace LiloShop
                     for(int i = 0; i < items.Count; i++)
                     {
                         var cartItem = items[i];
-                        Console.WriteLine($"{cartItem.ProductId}.{cartItem.Product.Name} - {cartItem.Product.Price:C2}");
-                        total += cartItem.Product.Price;
+                        var itemTotal = cartItem.Quantity * cartItem.Product.Price;
+                        boxOptions.Add($"{cartItem.ProductId}.{cartItem.Product.Name} -{cartItem.Quantity} st á {cartItem.Product.Price:C2}, {itemTotal:C2}");
+                        total += itemTotal;
                     }
-                    Console.WriteLine($"\nTotalt: {total:C2}");
+                    boxOptions.Add("");
+                    boxOptions.Add($"Totalt: {total:C2}");
                 }
-                Console.WriteLine("0. Tillbaka till huvudmenyn");
-                Console.WriteLine("A. Töm hela kundkorgen");
-                Console.WriteLine("(ProduktId). Radera enskild produkt");
+                var box = new MenuPlaceholder("Kundkorg", 0, 0, boxOptions);
+                box.Draw();
 
-               var input = Console.ReadLine();
+                var menuOptions = new List<string>();
+                menuOptions.Add("0. Tillbaka till huvudmenyn");
+                menuOptions.Add("A. Töm hela kundkorgen");
+                menuOptions.Add("(ProduktId).Radera enskild produkt");
+                var optionBox = new MenuPlaceholder("Dina alternativ", 0, items.Count * 5, menuOptions);
+                optionBox.Draw();
+               
+                var input = Console.ReadLine();
 
                 switch( input.ToLower() )
                 {
@@ -290,7 +355,7 @@ namespace LiloShop
                     case "a":
                         _database.RemoveRange(items);
                         _database.SaveChanges();
-                        Console.WriteLine("Kundkorgen är tömd"); // Fixa så man kan välja produkt att ta bort inte bara tömma hela kundkorgen
+                        Console.WriteLine("Kundkorgen är tömd"); 
                         Console.ReadLine();
                         RenderBasket();
                         break;

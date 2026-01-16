@@ -512,11 +512,11 @@ namespace LiloShop
             Console.WriteLine("Välj lösen: ");
             var userPassword = Console.ReadLine();
 
-            using var db = new Database();
+            //using var db = new Database();
 
-            var customer = db.Customers
-                .Include(c => c.Orders)
-                .FirstOrDefault(c => c.Email == email && c.Password == userPassword);
+            //var customer = db.Customers
+            //    .Include(c => c.Orders)
+            //    .FirstOrDefault(c => c.Email == email && c.Password == userPassword);
 
            
 
@@ -532,11 +532,11 @@ namespace LiloShop
             var email = Console.ReadLine();
 
             Console.Write("Lösenord: ");
-            var password = Console.ReadLine();  
+            var password = Console.ReadLine();
 
-            var customer = _database.Customers
+            Customer customer = _database.Customers
                 .Include(c => c.Orders)
-                .FirstOrDefault(c => c.Email == email && c.Password == password);
+                .FirstOrDefault(c => c.Email == email.ToString() && c.Password == password.ToString());
 
             if(customer == null)
             {
@@ -565,8 +565,8 @@ namespace LiloShop
 
             Console.WriteLine("Adminlösenord: ");
             var password = Console.ReadLine();
-            
-            var admin = _database.Admins
+
+            Admin admin =  _database.Admins
                 .FirstOrDefault(a => a.UserName == userName && a.PassWord == password);
              
             if(admin == null)
@@ -651,7 +651,7 @@ namespace LiloShop
         private static void RenderAdminCustomers()
         {
             Console.Clear();
-            var customers = _database.Customers.ToList();
+            var customers = new List<Customer>();
 
             foreach (var c in customers)
             {

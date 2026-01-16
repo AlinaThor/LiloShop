@@ -15,7 +15,7 @@ namespace LiloShop.Models
         public OrderStatus Status { get; set; }
 
         public int CustomerId { get; set; }
-        public Customer Customer { get; set; }
+        public virtual Customer Customer { get; set; }
         public string ShippingMethod { get; set; }
         public decimal ShippingCost { get; set; }
         public string PaymentMethod { get; set; }

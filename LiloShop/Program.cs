@@ -3,6 +3,7 @@ using LiloShop.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 
@@ -11,8 +12,9 @@ namespace LiloShop
     internal class Program
     {
         private static Database _database = new Database();
+        //private static AdminManagement _adminManagement = new AdminManagement();
         private static Customer _loggedInCustomer = null;
-        private const string AdminPassword = "admin123";
+       // private const string AdminPassword = "admin123";
 
         static void Main(string[] args)
         {
@@ -34,6 +36,7 @@ namespace LiloShop
                 "8.Logga ut",
                 "",
                 "9.Admin",
+                "10: Bli kund"
             };
             var mainMenu = new MenuPlaceholder("Huvudmeny", 2, 2, menuOptions);
             mainMenu.Draw();
@@ -73,6 +76,9 @@ namespace LiloShop
 
                     case 9:
                         RenderAdminLogIn();
+                        break;
+                    case 10:
+                        RegisterCustomer();
                         break;
                     default:
                         ShowErrorInput(RenderMainMenu);
@@ -278,78 +284,82 @@ namespace LiloShop
 
             if (int.TryParse(userChoice, out var choice))
             {
-                
-                 RenderProduct(product, goBackAction);
-                return;
-               
+
+                if (choice == 0)
+                {
+                    goBackAction();
+                    return;
+                }
+                if (choice != 1)
+                {
+                    //användaren vill inte köpa men tryckt annat än 1 - ladda om produkten bara
+                    RenderProduct(product, goBackAction);
+                    return;
+                }
+                //användare vill köpa
+
+                Console.WriteLine("Hur många vill du köpa: ");
+                var quantityInput = Console.ReadLine();
+
+                if (!int.TryParse(quantityInput, out var quantity))
+                {
+                    Console.WriteLine("Felaktigt antal, klicka enter för att försöka igen");
+                    Console.ReadLine();
+                    RenderProduct(product, goBackAction);
+                    return;
+                }
+                if (quantity <= 0)
+                {
+                    Console.WriteLine("Felaktigt antal, klicka enter för att försöka igen");
+                    Console.ReadLine();
+                    RenderProduct(product, goBackAction);
+                    return;
+                }
+
+                if (_loggedInCustomer == null)
+                {
+                    ShowErrorInput(RenderCustomerLogIn, "Du måste logga in");
+                    return;
+                }
+                if (product.StockQuantity < quantity)
+                {
+                    Console.WriteLine("Otillräckligt lagersaldo");
+                    Console.ReadLine();
+                    RenderProduct(product, goBackAction);
+                    return;
+                }
+                var cart = _database.Carts
+                   .Include(c => c.Items)
+                   .FirstOrDefault(c => c.CustomerId == _loggedInCustomer.Id);
+
+                if (cart == null)
+                {
+                    cart = new Cart
+                    {
+                        CustomerId = _loggedInCustomer.Id,
+                    };
+
+                    _database.Carts.Add(cart);
+                }
+
+                cart.Items.Add(new CartItem
+                {
+                    ProductId = product.Id,
+                    Quantity = quantity
+                });
+
+                _database.SaveChanges();
+
+                Console.WriteLine($"{quantity}st {product.Name} har lagts i kundkorgen, klicka enter för att gå vidare");
+                Console.ReadLine();
+                goBackAction();
             }
-            if (choice == 0)
+            else
             {
+                //användaren har knappat in annat än siffror - gå tillbaka
                 goBackAction();
                 return;
             }
-            if (choice != 1)
-            {
-                RenderProduct(product, goBackAction);
-                return;
-            }
-
-            Console.WriteLine("Hur många vill du köpa: ");
-            var quantityInput = Console.ReadLine(); 
-
-            if(!int.TryParse(quantityInput, out var quantity))
-            {
-                Console.WriteLine("Felaktigt antal, klicka enter för att försöka igen");
-                Console.ReadLine();
-                RenderProduct(product, goBackAction);
-                return;
-            }
-            if(quantity <= 0)
-            {
-                Console.WriteLine("Felaktigt antal, klicka enter för att försöka igen");
-                Console.ReadLine();
-                RenderProduct(product, goBackAction);
-                return;
-            }
-
-            if(_loggedInCustomer == null)
-            {
-                ShowErrorInput(RenderCustomerLogIn, "Du måste logga in");
-                return;
-            }
-            if(product.StockQuantity < quantity)
-            {
-                Console.WriteLine("Otillräckligt lagersaldo");
-                Console.ReadLine();
-                RenderProduct(product, goBackAction);
-                return;
-            }
-            var cart = _database.Carts
-               .Include(c => c.Items)
-               .FirstOrDefault(c => c.CustomerId == _loggedInCustomer.Id);
-             
-            if(cart == null)
-            {
-                cart = new Cart
-                {
-                    CustomerId = _loggedInCustomer.Id,
-                };
-
-                _database.Carts.Add(cart);
-            }
-
-            cart.Items.Add(new CartItem
-            {
-                ProductId = product.Id,
-                Quantity = quantity
-            });
-
-            _database.SaveChanges();
-
-            Console.WriteLine($"{quantity}st {product.Name} har lagts i kundkorgen, klicka enter för att gå vidare");
-            Console.ReadLine();
-            goBackAction();
-
         }
         private static void RenderBasket()
         {
@@ -463,6 +473,12 @@ namespace LiloShop
                 RenderMainMenu();
                 return;
             }
+
+            if(string.IsNullOrWhiteSpace(input))
+            {
+                ShowErrorInput(RenderSearch, "Du måste ange ett sökord. ");
+                return;
+            }
            
                 var query = """
                     SELECT *
@@ -478,6 +494,23 @@ namespace LiloShop
                             query,
                             new {search = $"%{input}%"}
                             ).ToList();
+
+                            Console.Clear();
+
+                            if (!products.Any())
+                            {
+                                Console.WriteLine("Inga produkter hittades.");
+                            }
+                            else
+                            {
+                                foreach(var product in products)
+                                {
+                                    Console.WriteLine($"{product.Name} - {product.Description}");
+                                }
+                            }
+                    Console.WriteLine("\nTryck på valfri tangent för att fortsätta..");
+                    Console.ReadKey();
+                    RenderSearch();
                     }
                 }
                 catch (Exception e)
@@ -512,13 +545,30 @@ namespace LiloShop
             Console.WriteLine("Välj lösen: ");
             var userPassword = Console.ReadLine();
 
-            //using var db = new Database();
+            //spara i databasen
+            try
+            {
+                _database.Add(new Customer
+                {
+                    Name = name,
+                    Email = email,
+                    Address = address,
+                    City = city,
+                    Phonenumber = phone,
+                    Password = userPassword
+                });
+                _database.SaveChanges();
+                Console.WriteLine("Kund skapad, klicka för att gå tillbaka");
+                Console.ReadLine();
+                RenderMainMenu();
+            }
+            catch (Exception e)
+            {
 
-            //var customer = db.Customers
-            //    .Include(c => c.Orders)
-            //    .FirstOrDefault(c => c.Email == email && c.Password == userPassword);
-
-           
+                Console.WriteLine($"Det gick inte att skap en kund pga: {e.Message}");
+                Console.ReadLine();
+                RenderMainMenu();
+            }
 
         }
 
@@ -604,6 +654,7 @@ namespace LiloShop
             adminOptions.Add("6. Ta bort produkt");
             adminOptions.Add("7. Se kunder och redigera");
             adminOptions.Add("8. Se lagersaldo och leverantör");
+            adminOptions.Add("9. Se alla ordrar");
 
             var adminBox = new MenuPlaceholder("Admin", 0, 0, adminOptions);
             adminBox.Draw();
@@ -640,6 +691,11 @@ namespace LiloShop
                 case "8":
                     RenderAdminInStock();
                     break;
+                case "9":
+                    RenderAdminAllOrders().Wait();
+                    //ett exempel på att bryta ut till annan klass
+                   // _adminManagement.RenderAdminAllOrders().Wait();
+                    break;
                 default:
                     ShowErrorInput(RenderAdminMenu);
                     break;
@@ -648,10 +704,144 @@ namespace LiloShop
 
         }
 
+        private static async Task RenderAdminAllOrders()
+        {
+
+            Console.Clear();
+
+            var sw = new Stopwatch();
+            sw.Start();
+            var orders = await _database.Orders
+                .Include(o => o.Items)
+                .ThenInclude(i => i.Product)
+                .Include(o => o.Customer)
+                .ToListAsync();
+
+            sw.Stop();
+
+            RenderOrders(orders);
+
+            if (!orders.Any())
+            {
+                Console.WriteLine("Det finns inga ordrar.");
+                Console.ReadLine();
+                RenderAdminMenu();
+                return;
+            }
+
+            foreach(var order in orders)
+            {
+                Console.WriteLine($"Order {order.Id} | {order.OrderDate:g} | Status: ");
+
+                switch (order.Status)
+                {
+                    case OrderStatus.Mottagen:
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        break;
+                    case OrderStatus.Behandlas:
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                        break;
+                    case OrderStatus.Skickad:
+                        Console.ForegroundColor = ConsoleColor.DarkGreen;
+                        break;
+                    case OrderStatus.Levererad:
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        break;
+                }
+
+                Console.WriteLine(order.Status);
+                Console.ResetColor();
+
+                Console.WriteLine($"Kund: {order.Customer.Name}");
+                Console.WriteLine($"Frakt: {order.ShippingMethod}");
+                Console.WriteLine($"Betalning: {order.PaymentMethod}");
+                Console.WriteLine($"Totalt: {order.TotalPrice:C2}");
+                Console.WriteLine("Innehåll: ");
+
+                foreach(var item in order.Items)
+                {
+                    Console.WriteLine($"- {item.Product.Name} x {item.Quantity} a {item.Price:C2}");
+                }
+
+                Console.WriteLine(new string('-', 50));
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"Hela hämtningen tog {sw.ElapsedMilliseconds} ms (millisekunder)");
+            Console.WriteLine();
+            Console.WriteLine("Ange orderid för att redigera eller 0 för att gå tillbaka");
+
+            var input = Console.ReadLine();
+
+            if(!int.TryParse(input, out var orderId))
+            {
+                ShowErrorInput(() => RenderAdminAllOrders().Wait(), "Felaktig inmatning");
+                return;
+            }
+            if(orderId == 0)
+            {
+                RenderAdminMenu();
+                return;
+            }
+
+            var selectedOrder = orders.FirstOrDefault(o => o.Id == orderId);
+            if(selectedOrder == null)
+            {
+                ShowErrorInput(() => RenderAdminAllOrders().Wait(), "OrderId finns inte");
+                return;
+            }
+
+            Console.Clear();
+            Console.WriteLine($"Redigerar order {selectedOrder.Id}");
+            Console.WriteLine($"Nuvarande status: {selectedOrder.Status}");
+            Console.WriteLine();
+
+            Console.WriteLine("Välj ny status: ");
+            foreach(var status in Enum.GetValues(typeof(OrderStatus)))
+            {
+                Console.WriteLine($"{(int)status}. {status}");
+            }
+
+            var statusInput = Console.ReadLine();
+
+            if(!int.TryParse(statusInput, out var statusValue)||
+                !Enum.IsDefined(typeof(OrderStatus), statusValue))
+            {
+                ShowErrorInput(() => RenderAdminAllOrders().Wait(), "Felaktig status");
+                return;
+            }
+
+            selectedOrder.Status = (OrderStatus)statusValue;
+            _database.SaveChanges();
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine();
+            Console.WriteLine("SPARAD!");
+            Console.ResetColor();
+
+            Console.WriteLine("Klicka enter för att gå tillbaka");
+
+            Console.ReadLine();
+            RenderAdminMenu();
+
+            //läs in vad användaren vill, redigera en order eller gå tillbaka?
+
+            // om redigera en order, hämta ordern mha. orderid som användaren angivet
+            //finns ingen order med matchande id - visa felaktigt order id - försök igen
+            // om man angett annat än siffor, visa fel och försök igen
+            // hämta order och ge möjlighet att ändra status
+            // spara i databasen och visa "SPARAD!"
+            // tillbaka till admin menun
+            
+           
+
+        }
+
+
         private static void RenderAdminCustomers()
         {
             Console.Clear();
-            var customers = new List<Customer>();
+            var customers = _database.Customers.ToList();
 
             foreach (var c in customers)
             {
@@ -1069,12 +1259,22 @@ namespace LiloShop
                 }
             }
 
+            Console.WriteLine("Välj betalsätt");
+            Console.WriteLine("1.Kort");
+            Console.WriteLine("2.Swish");
+
+            var paymetChoice = Console.ReadLine();
+            var paymentMethod = paymetChoice == "2" ? "Swish" : "Kort";
+
             var order = new Order
             {
                 CustomerId = _loggedInCustomer.Id,
                 OrderDate = DateTime.Now,
                 TotalPrice = total,
-                ShippingMethod = shippingMethod
+                ShippingMethod = shippingMethod,
+                ShippingCost = shippingCost,
+                PaymentMethod = paymentMethod,
+                Status = OrderStatus.Mottagen
             };
 
             _database.Orders.Add(order);
@@ -1094,66 +1294,13 @@ namespace LiloShop
                     
             }
 
-
             _database.CartItems.RemoveRange(cartItems);
             _database.SaveChanges();
 
             Console.WriteLine("Tack för din beställning! Tryck enter för att gå till huvudmenyn");
             Console.ReadLine();
             RenderMainMenu();
-
-
-
-
-            //var items = _database.CartItems.Include(c => c.Product).ToList();
-
-            //decimal subtotal = items.Sum(i => i.Product.Price * i.Quantity);
-            //decimal moms = subtotal * 0.25m;
-            //decimal total = subtotal + moms + shippingCost;
-
-            //Console.WriteLine($"Varor: {subtotal:C}");
-            //Console.WriteLine($"Moms: {moms:C}");
-            //Console.WriteLine($"Frakt: {shippingMethod} {shippingCost:C}");
-            //Console.WriteLine($"Totalt: {total:C}");
-            //Console.WriteLine();
-
-            //Console.WriteLine("1.Kort");
-            //Console.WriteLine("2.Swish");
-
-            //var paymetChoice = Console.ReadLine();
-            //var paymentMethod = paymetChoice == "2" ? "Swish" : "Kort";
-
-            //var order = new Order
-            //{
-            //    CustomerId = _loggedInCustomer.Id,
-            //    OrderDate = DateTime.Now,
-            //    ShippingMethod = shippingMethod,
-            //    ShippingCost = shippingCost,
-            //    PaymentMethod = paymentMethod,
-            //    TotalPrice = total,
-            //    Status = OrderStatus.Mottagen
-            //};
-
-            //foreach(var item in items)
-            //{
-            //    order.Items.Add(new OrderItem
-            //    {
-            //        ProductId = item.ProductId,
-            //        Quantity = item.Quantity,
-            //        Price = item.Product.Price,
-            //        Product = item.Product
-            //    });
-
-            //    item.Product.StockQuantity -= item.Quantity;
-            //}
-
-            //_database.Orders.Add(order);
-            //_database.CartItems.RemoveRange(items);
-            //_database.SaveChanges();
-
-            //Console.WriteLine("Betalningen är genomförd! ");
-            //Console.ReadLine ();
-            //RenderMainMenu();   
+ 
         }
 
         private static void RenderMyOrders()
@@ -1179,7 +1326,16 @@ namespace LiloShop
                 return;
             }
 
-            foreach(var order in orders)
+            RenderOrders(orders);
+            Console.WriteLine("Tryck enter för att återgå till huvudmeny");
+            Console.ReadLine();
+            RenderMainMenu ();
+            
+        }
+
+        private static void RenderOrders(List<Order> orders)
+        {
+            foreach (var order in orders)
             {
                 Console.WriteLine($"Order - {order.Id} - {order.OrderDate}");
                 Console.WriteLine($"Status: {order.Status}");
@@ -1194,10 +1350,6 @@ namespace LiloShop
                 }
 
             }
-            Console.WriteLine("Tryck enter för att återgå till huvudmeny");
-            Console.ReadLine();
-            RenderMainMenu ();
-            
         }
 
         private static void ShowErrorInput(Action actionToRunAfterErrorIsPresented, string optionalErrorText = "")

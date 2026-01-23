@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace LiloShop
 {
-    internal class Database : DbContext
+    public class Database : DbContext
     {
         public DbSet<Category> Categories { get; set; }
         public DbSet<Product> Products { get; set; }

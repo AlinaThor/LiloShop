@@ -1,5 +1,6 @@
 ﻿using Dapper;
 using LiloShop.Models;
+using LiloShop.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -12,9 +13,12 @@ namespace LiloShop
     internal class Program
     {
         private static Database _database = new Database();
+        private static ProductService _productService = new ProductService(_database);
+        private static CategoryService _categoryService = new CategoryService(_database);
+        private static CustomerService _customerService = new CustomerService(_database);
         //private static AdminManagement _adminManagement = new AdminManagement();
         private static Customer _loggedInCustomer = null;
-       // private const string AdminPassword = "admin123";
+       
 
         static void Main(string[] args)
         {
@@ -98,11 +102,7 @@ namespace LiloShop
             var welcomeBox = new MenuPlaceholder($"Välkommen till Lilo", 22, 1, new List<string> { "Världens bästa shop i ett console fönster"});
             welcomeBox.Draw();
 
-            var products = _database.Products
-                .Include(p => p.Category)
-                .Where(x => x.IsSpecialOffer)
-                .Take(3)
-                .ToList();
+            var products = _productService.GetSpecialOfferProducts();
 
             for(var i = 0; i < products.Count; i++)
             {
@@ -174,11 +174,8 @@ namespace LiloShop
         {
             Console.Clear();
 
-            var products = _database.Products
-                .Include(p => p.Category)
-                .ToList();
+            var products = _productService.GetAllProducts();
             RenderProducts(products, RenderMainMenu);
-
         }
 
         private static void RenderProducts(List<Product> products, Action goBackAction)
@@ -231,7 +228,7 @@ namespace LiloShop
             Console.Clear();
             var boxOptions = new List<string>();
             boxOptions.Add("0: Gå tillbaka");
-            var categories = _database.Categories.Include(x => x.Products).ToList();
+            var categories = _categoryService.GetAllCatgeories();
             foreach(var category in categories)
             {
                 boxOptions.Add($"{category.Id}.{category.Name}");
@@ -548,16 +545,7 @@ namespace LiloShop
             //spara i databasen
             try
             {
-                _database.Add(new Customer
-                {
-                    Name = name,
-                    Email = email,
-                    Address = address,
-                    City = city,
-                    Phonenumber = phone,
-                    Password = userPassword
-                });
-                _database.SaveChanges();
+                _customerService.CreateCustomer(name, email, address, city, phone, userPassword);
                 Console.WriteLine("Kund skapad, klicka för att gå tillbaka");
                 Console.ReadLine();
                 RenderMainMenu();
@@ -584,10 +572,7 @@ namespace LiloShop
             Console.Write("Lösenord: ");
             var password = Console.ReadLine();
 
-            Customer customer = _database.Customers
-                .Include(c => c.Orders)
-                .FirstOrDefault(c => c.Email == email.ToString() && c.Password == password.ToString());
-
+            var customer = _customerService.GetByLogIn(email, password);
             if(customer == null)
             {
                 ShowErrorInput(RenderMainMenu, "Fel Inloggning, tryck enter för att försöka igen");
@@ -655,6 +640,7 @@ namespace LiloShop
             adminOptions.Add("7. Se kunder och redigera");
             adminOptions.Add("8. Se lagersaldo och leverantör");
             adminOptions.Add("9. Se alla ordrar");
+            adminOptions.Add("10. Se statistik");
 
             var adminBox = new MenuPlaceholder("Admin", 0, 0, adminOptions);
             adminBox.Draw();
@@ -696,6 +682,10 @@ namespace LiloShop
                     //ett exempel på att bryta ut till annan klass
                    // _adminManagement.RenderAdminAllOrders().Wait();
                     break;
+                case "10":
+                    RenderAdminStatistics();
+                    //Lägga till så det finns statistik (queries)
+                    break;
                 default:
                     ShowErrorInput(RenderAdminMenu);
                     break;
@@ -735,6 +725,7 @@ namespace LiloShop
 
                 switch (order.Status)
                 {
+                    //Testat lägga till färger
                     case OrderStatus.Mottagen:
                         Console.ForegroundColor = ConsoleColor.Yellow;
                         break;
@@ -824,16 +815,6 @@ namespace LiloShop
             Console.ReadLine();
             RenderAdminMenu();
 
-            //läs in vad användaren vill, redigera en order eller gå tillbaka?
-
-            // om redigera en order, hämta ordern mha. orderid som användaren angivet
-            //finns ingen order med matchande id - visa felaktigt order id - försök igen
-            // om man angett annat än siffor, visa fel och försök igen
-            // hämta order och ge möjlighet att ändra status
-            // spara i databasen och visa "SPARAD!"
-            // tillbaka till admin menun
-            
-           
 
         }
 
@@ -841,7 +822,7 @@ namespace LiloShop
         private static void RenderAdminCustomers()
         {
             Console.Clear();
-            var customers = _database.Customers.ToList();
+            var customers = _customerService.GetAllCustomers();
 
             foreach (var c in customers)
             {
@@ -889,7 +870,7 @@ namespace LiloShop
         private static void RenderAdminInStock()
         {
             Console.Clear();
-            var products = _database.Products.ToList();
+            var products = _productService.GetAllProducts();
 
             foreach(var p in products)
             {
@@ -899,6 +880,61 @@ namespace LiloShop
             Console.WriteLine("\nTryck enter för att återgå till adminmenyn");
             Console.ReadLine() ;
             RenderAdminMenu();
+        }
+
+        private static void RenderAdminStatistics()
+        {
+            Console.Clear();
+
+            if(_loggedInAdmin == null)
+            {
+                ShowErrorInput(RenderAdminLogIn, "Du måste logga in ");
+                return;
+            }
+
+            Console.WriteLine("Statistik för LiloShop");
+            Console.WriteLine(new string('-', 50));
+
+            //Bästsäljande produkter
+
+            var bestSellingProducts = _database.OrderItems
+                .Include(oi => oi.Product)
+                .GroupBy(oi => oi.Product.Name)
+                .Select(g => new
+                {
+                    Product = g.Key,
+                    Quantity = g.Sum(x => x.Quantity)
+                })
+
+                .OrderByDescending(x => x.Quantity)
+                .Take(5)
+                .ToList();
+
+            Console.WriteLine("Bästsäljande produkter: ");
+            foreach(var p in bestSellingProducts)
+            {
+                Console.WriteLine($"{p.Product} - {p.Quantity}");
+            }
+
+            //Populäraste kategorin
+
+            var popularCategory = _database.OrderItems
+                .Include(o => o.Product)
+                .ThenInclude(p => p.Category)
+                .GroupBy(o => o.Product.Category.Name)
+                .Select(g => new { Category = g.Key, Count = g.Sum(x => x.Quantity) })
+                .OrderByDescending(x => x.Count)
+                .FirstOrDefault();
+
+            Console.WriteLine($"\nPopuläraste kategorin");
+
+            //Dapper
+
+           // using (var conn = new SqlConnection("Server=.\\SQLExpress;Database=LilosShop;Trusted_Connection=True; TrustServerCertificate=True;"))
+            {
+              
+            }
+           
         }
         private static void RenderCreateProduct()
         {
@@ -913,7 +949,12 @@ namespace LiloShop
             Console.Write("Pris: ");
             decimal.TryParse(Console.ReadLine(), out var price);
 
-            Console.Write("Färg: ");
+            Console.WriteLine($"Färger");
+            foreach (var value in Enum.GetValues(typeof(Color)))
+            {
+                Console.WriteLine($"{(int)value}. {value}");
+            }
+            Console.Write("Ange Färgkod: ");
             Enum.TryParse(Console.ReadLine(), true, out Color color);
 
             Console.Write("Storlek (ange siffra): ");
@@ -928,7 +969,7 @@ namespace LiloShop
             Console.Write("Leverantör: ");
             var supplier = Console.ReadLine();
 
-            var categories = _database.Categories.ToList();
+            var categories = _categoryService.GetAllCatgeories();
             foreach(var c  in categories)
             {
                 Console.WriteLine($"{c.Id}. {c.Name}");
@@ -956,20 +997,24 @@ namespace LiloShop
                 IsSpecialOffer = isOffer
             };
 
-            _database.Products.Add(product);
-            _database.SaveChanges();
+            try
+            {
+                _productService.CreateProduct(product);
 
-            Console.WriteLine("Produkt skapad");
-            Console.ReadLine();
-            RenderAdminMenu();
-
-
+                Console.WriteLine("Produkt skapad");
+                Console.ReadLine();
+                RenderAdminMenu();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Det gick inte att skapa proukten pga: {e.Message}");
+            }
         }
 
         // Redigera en produkt
         private static void RenderEditProduct()
         {
-            var products = _database.Products.ToList();
+            var products = _productService.GetAllProducts();
             foreach(var p in products)
             {
                 Console.WriteLine($"{p.Id}. {p.Name}");
@@ -991,32 +1036,13 @@ namespace LiloShop
             //Namn
             Console.WriteLine($"Nytt namn ({product.Name}) ");
             var name = Console.ReadLine();  
-            if(!string.IsNullOrWhiteSpace(name))
-            {
-                product.Name = name;
-            }
 
             Console.WriteLine($"Ny beskrivning ({product.Description}):  ");
             var description = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(description))
-            {
-                product.Description = description;
-            }
-
+          
             // Pris
             Console.WriteLine($"Nytt pris ({product.Price})  ");
             var priceInput = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(priceInput))
-            {
-                if(decimal.TryParse(priceInput, out var price) && price > 0)
-                {
-                    product.Price = price;
-                }
-                else
-                {
-                    Console.WriteLine("Felaktigt pris, nuvarande pris behålls. ");
-                }
-            }
 
             //Färg
             Console.WriteLine($"Ny färg ({product.Color}):  ");
@@ -1025,61 +1051,35 @@ namespace LiloShop
                 Console.WriteLine($"{(int)value}. {value}");
             }
             var colorInput = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(colorInput))
-            {
-                if (int.TryParse(colorInput, out var colorValue) && Enum.IsDefined(typeof(Color), colorValue))
-                {
-                    product.Color = (Color)colorValue;
-                }
-                else
-                {
-                    Console.WriteLine("Felaktigt färg, nuvarande färg behålls. ");
-                }
-            }
+          
 
             // Storlek
             Console.WriteLine($"Ny storlek ({product.Size}) ");
             var sizeInput = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(sizeInput))
-            {
-                if(int.TryParse(sizeInput, out var size))
-                {
-                    product.Size = size;
-                }
-                else
-                {
-                    Console.WriteLine("Felktig storlek, nuvarande storlek behålls");
-                }
-               
-            }
+         
             // Specialerbjudande
             Console.WriteLine($"Specialerbjudande ({(product.IsSpecialOffer ? "j"  : "n")}) ");
             var offerInput = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(offerInput))
+
+            try
             {
-                if (offerInput.ToLower() == "j")
-                {
-                    product.IsSpecialOffer = true;
-                }
-                else if (offerInput.ToLower() == "n")
-                {
-                    product.IsSpecialOffer = false;
-                }
-
+                _productService.UpdateProduct(product.Id, name, description, priceInput, colorInput, sizeInput, offerInput);
+                Console.WriteLine("Produkt uppdaterad ");
+                Console.ReadLine();
+                RenderAdminMenu();
             }
-
-            _database.SaveChanges();
-
-            Console.WriteLine("Produkt uppdaterad ");
-            Console.ReadLine ();
-            RenderAdminMenu();
+            catch (Exception e)
+            {
+                ShowErrorInput(RenderAdminMenu, e.Message);
+            }
         }
 
+        //Radera en produkt
         private static void RenderDeleteProduct()
         {
             Console.Clear();
 
-            var products = _database.Products.ToList();
+            var products = _productService.GetAllProducts();
             foreach (var p in products)
             {
                 Console.WriteLine($"{p.Id}. {p.Name}");
@@ -1097,8 +1097,7 @@ namespace LiloShop
                 ShowErrorInput(RenderAdminMenu);
             }
 
-            _database.Products.Remove(product);
-            _database.SaveChanges ();
+            _productService.DeleteProduct(product);
 
             Console.WriteLine($"{product} är raderad");
             Console.ReadLine ();
@@ -1112,23 +1111,18 @@ namespace LiloShop
             Console.Write("Ange Kategorinamn: ");
             var name = Console.ReadLine();
 
-            if(string.IsNullOrEmpty(name) )
+            try
             {
-                ShowErrorInput(RenderAdminMenu);
+                _categoryService.CreateCategory(name);
+                Console.WriteLine("Kategorin skapad");
+                Console.ReadLine();
+                RenderAdminMenu();
+            }
+            catch (Exception e)
+            {
+                ShowErrorInput(RenderAdminMenu, e.Message);
                 return;
             }
-            if(_database.Categories.Any(c => c.Name.ToLower() == name.ToLower()))
-            {
-                ShowErrorInput(RenderAdminMenu, "Kategorin finns redan");
-            }
-
-            _database.Categories.Add(new Category { Name = name });
-            _database.SaveChanges();
-
-            Console.WriteLine("Kategorin skapad");
-            Console.ReadLine();
-            RenderAdminMenu();
-            
 
         }
 
@@ -1136,7 +1130,7 @@ namespace LiloShop
         {
             Console.Clear ();
 
-            var categories = _database.Categories.ToList();
+            var categories = _categoryService.GetAllCatgeories();
             foreach (var c in categories)
             {
                 Console.WriteLine($"{c.Id}. {c.Name}");
@@ -1148,20 +1142,22 @@ namespace LiloShop
                 return;
             }
 
-            var category = _database.Categories.FirstOrDefault(c => c.Id == id);    
-            if (category == null)
+            Console.WriteLine("Ange nytt namn: ");
+            var name = Console.ReadLine();
+
+            try
             {
-                ShowErrorInput(RenderAdminMenu);
-                return;
+                _categoryService.Update(id, name);
+                Console.WriteLine("Kategorin är uppdaterad");
+                Console.ReadLine();
+                RenderAdminMenu();
+            }
+            catch (Exception e)
+            {
+                ShowErrorInput(RenderAdminMenu,e.Message);
             }
 
-            Console.WriteLine("Ange nytt namn: ");
-            category.Name = Console.ReadLine();
-            _database.SaveChanges();
-
-            Console.WriteLine("Kategorin är uppdaterad");
-            Console.ReadLine();
-            RenderAdminMenu();
+          
         }
 
         private static void RenderShipping()

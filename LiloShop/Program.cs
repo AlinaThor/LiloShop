@@ -1296,7 +1296,6 @@ namespace LiloShop
             Console.WriteLine("Tack för din beställning! Tryck enter för att gå till huvudmenyn");
             Console.ReadLine();
             RenderMainMenu();
- 
         }
 
         private static void RenderMyOrders()
@@ -1326,7 +1325,6 @@ namespace LiloShop
             Console.WriteLine("Tryck enter för att återgå till huvudmeny");
             Console.ReadLine();
             RenderMainMenu ();
-            
         }
 
         private static void RenderOrders(List<Order> orders)
@@ -1344,7 +1342,6 @@ namespace LiloShop
                 {
                     Console.WriteLine($" - {item.Product.Name} x {item.Quantity} a {item.Price}");
                 }
-
             }
         }
 

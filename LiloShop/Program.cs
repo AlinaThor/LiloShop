@@ -4,22 +4,20 @@ using LiloShop.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Data.SqlTypes;
 using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 
 namespace LiloShop
 {
-    internal class Program
+    public class Program
     {
         private static Database _database = new Database();
         private static ProductService _productService = new ProductService(_database);
         private static CategoryService _categoryService = new CategoryService(_database);
         private static CustomerService _customerService = new CustomerService(_database);
-        //private static AdminManagement _adminManagement = new AdminManagement();
         private static Customer _loggedInCustomer = null;
-       
-
         static void Main(string[] args)
         {
             RenderStartpage();
@@ -109,7 +107,6 @@ namespace LiloShop
                 var left = 2;
                 var product = products[i];
 
-
                 var offerInfo = new List<string>();
                 offerInfo.Add(product.Name);
                 offerInfo.Add("Kategori: " + product.Category?.Name); 
@@ -133,7 +130,6 @@ namespace LiloShop
 
                 }
              
-              
                 var offerBox = new MenuPlaceholder($"Erbjudande {i+1}", left, 6, offerInfo);
                 offerBox.Draw();
             }
@@ -213,14 +209,12 @@ namespace LiloShop
                     ShowErrorInput(goBackAction);
                     return;
                 }
-
             }
             else
             {
                 ShowErrorInput(goBackAction);
                 return;
             }
-        
         }
 
         private static void RenderCategories()
@@ -446,7 +440,6 @@ namespace LiloShop
                         {
                             ShowErrorInput(RenderBasket);
                         }
-                          
                         return;
                 }
             }
@@ -485,7 +478,7 @@ namespace LiloShop
 
                 try
                 {
-                    using (var conn = new SqlConnection("Server=.\\SQLExpress;Database=LilosShop;Trusted_Connection=True; TrustServerCertificate=True;"))
+                    using (var conn = new SqlConnection(Database.CONNECTION_STRING))
                     {
                         var products = conn.Query<Product>(
                             query,
@@ -514,8 +507,6 @@ namespace LiloShop
                 {
                     ShowErrorInput(RenderSearch, e.Message);
                 }
-            
-
         }
 
         private static void RegisterCustomer()
@@ -557,14 +548,13 @@ namespace LiloShop
                 Console.ReadLine();
                 RenderMainMenu();
             }
-
         }
 
         private static void RenderCustomerLogIn()
         {
             Console.Clear();
 
-            Console.WriteLine("Kund-login");
+            Console.Write("Kund-login");
 
             Console.Write("Email: ");
             var email = Console.ReadLine();
@@ -572,7 +562,7 @@ namespace LiloShop
             Console.Write("Lösenord: ");
             var password = Console.ReadLine();
 
-            var customer = _customerService.GetByLogIn(email, password);
+            var customer = _customerService.Login(email, password);
             if(customer == null)
             {
                 ShowErrorInput(RenderMainMenu, "Fel Inloggning, tryck enter för att försöka igen");
@@ -583,7 +573,6 @@ namespace LiloShop
 
             _loggedInCustomer = customer;
 
-            
             Console.WriteLine($"Inloggad som {customer.Name}");
             Console.ReadLine();
             RenderMainMenu();
@@ -598,11 +587,12 @@ namespace LiloShop
             Console.Write("Användarnamn:");
             var userName = Console.ReadLine();
 
-            Console.WriteLine("Adminlösenord: ");
+            Console.Write("Adminlösenord: ");
             var password = Console.ReadLine();
 
+            var hashedPassword = SecurityService.HashPassword(password);
             Admin admin =  _database.Admins
-                .FirstOrDefault(a => a.UserName == userName && a.PassWord == password);
+                .FirstOrDefault(a => a.UserName == userName && a.PassWord == hashedPassword);
              
             if(admin == null)
             {
@@ -689,7 +679,6 @@ namespace LiloShop
                 default:
                     ShowErrorInput(RenderAdminMenu);
                     break;
-
             }
 
         }
@@ -814,8 +803,6 @@ namespace LiloShop
 
             Console.ReadLine();
             RenderAdminMenu();
-
-
         }
 
 
@@ -895,46 +882,74 @@ namespace LiloShop
             Console.WriteLine("Statistik för LiloShop");
             Console.WriteLine(new string('-', 50));
 
-            //Bästsäljande produkter
-
-            var bestSellingProducts = _database.OrderItems
-                .Include(oi => oi.Product)
-                .GroupBy(oi => oi.Product.Name)
-                .Select(g => new
-                {
-                    Product = g.Key,
-                    Quantity = g.Sum(x => x.Quantity)
-                })
-
-                .OrderByDescending(x => x.Quantity)
-                .Take(5)
-                .ToList();
-
-            Console.WriteLine("Bästsäljande produkter: ");
-            foreach(var p in bestSellingProducts)
+            using (var conn = new SqlConnection(Database.CONNECTION_STRING))
             {
-                Console.WriteLine($"{p.Product} - {p.Quantity}");
+                //Bästsäljande produkt
+
+                var bestSellingQ = """
+                    SELECT TOP 3
+                        p.Name AS ProductName,
+                        SUM(oi.Quantity) AS TotalSold
+                    FROM OrderItems oi
+                    JOIN Products p ON oi.ProductId = p.Id
+                    GROUP BY p.Name
+                    ORDER BY TotalSold DESC
+                    """;
+
+                Console.WriteLine("\nBästsäljande produkter: ");
+                var bestSelling = conn.Query(bestSellingQ).ToList();
+
+                if(!bestSelling.Any())
+                    Console.WriteLine("Ingen försäljning finns");
+                else
+                    foreach(var p in bestSelling)
+                        Console.WriteLine($"{p.ProductName} - {p.TotalSold} st");
+
+
+
+                //Populäraste kategorin
+
+                var popularCategoryQ = """
+                SELECT TOP 1
+                    c.Name AS CategoryName,
+                    SUM(oi.Quantity) AS TotalSold
+                FROM OrderItems oi
+                JOIN Products p ON oi.ProductId = p.Id
+                JOIN Categories c ON p.CategoryId = c.Id
+                GROUP BY c.Name
+                ORDER BY TotalSold DESC
+                """;
+
+                Console.WriteLine("\nPopuläraste kategorin: ");
+                var popularCategory = conn.QueryFirstOrDefault(popularCategoryQ);
+
+                if(popularCategory == null)
+                    Console.WriteLine("Ingen kategori-data finns");
+                else
+                    Console.WriteLine($"{popularCategory.CategoryName} ({popularCategory.TotalSold} sålda produkter)");
+
+
+                //Lågt lagersaldo
+
+                var lowStockQ = """
+                    SELECT Name, StockQuantity
+                    FROM Products
+                    WHERE StockQuantity < 10
+                    ORDER BY StockQuantity
+                    """;
+
+                Console.WriteLine("\nProdukter med lågt lagersaldo: ");
+                var lowStock = conn.Query(lowStockQ).ToList();
+
+                if(!lowStock.Any())
+                    Console.WriteLine("Alla produkter har tillräckligt lagersaldo");
+                else
+                    foreach(var p in lowStock)
+                        Console.WriteLine($"{p.Name} - {p.StockQuantity} kvar");
+
+                
             }
 
-            //Populäraste kategorin
-
-            var popularCategory = _database.OrderItems
-                .Include(o => o.Product)
-                .ThenInclude(p => p.Category)
-                .GroupBy(o => o.Product.Category.Name)
-                .Select(g => new { Category = g.Key, Count = g.Sum(x => x.Quantity) })
-                .OrderByDescending(x => x.Count)
-                .FirstOrDefault();
-
-            Console.WriteLine($"\nPopuläraste kategorin");
-
-            //Dapper
-
-           // using (var conn = new SqlConnection("Server=.\\SQLExpress;Database=LilosShop;Trusted_Connection=True; TrustServerCertificate=True;"))
-            {
-              
-            }
-           
         }
         private static void RenderCreateProduct()
         {

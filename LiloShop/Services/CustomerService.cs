@@ -18,19 +18,21 @@ namespace LiloShop.Services
         {
             return _database.Customers.ToList();
         }
-        public Customer GetByLogIn(string email, string password)
+        public Customer Login(string email, string password)
         {
+
+            var hashedPassword = SecurityService.HashPassword(password);
             return _database.Customers
                 .Include(c => c.Orders)
-                .FirstOrDefault(c => c.Email == email && c.Password == password);
+                .FirstOrDefault(c => c.Email == email && c.Password == hashedPassword);
         }
         public void CreateCustomer(string name, string email, string address, string city, string phone, string userPassword)
         {
-            if (!string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(name))
             {
                 throw new ArgumentException("Kunden måste ha ett namn");
             }
-            if (!string.IsNullOrWhiteSpace(email))
+            if (string.IsNullOrWhiteSpace(email))
             {
                 throw new ArgumentException("Kunden måste ha en emailadress");
             }
@@ -40,7 +42,17 @@ namespace LiloShop.Services
                 throw new ArgumentException("Giltigt epost saknas, måste innehålla ett @");
             }
 
-            //osv på alla parametrar som man anser är KRAV
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                throw new ArgumentException("Kunden måste ha ett telefonnummer");
+            }
+
+            if (string.IsNullOrWhiteSpace(userPassword))
+            {
+                throw new ArgumentException("Kunden måste ha ett lösenord");
+            }
+
+            var hashedPassword = SecurityService.HashPassword(userPassword);
 
             _database.Add(new Customer
             {
@@ -49,7 +61,7 @@ namespace LiloShop.Services
                 Address = address,
                 City = city,
                 Phonenumber = phone,
-                Password = userPassword
+                Password = hashedPassword
             });
             _database.SaveChanges();
         }

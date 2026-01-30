@@ -3,11 +3,7 @@ using LiloShop.Models;
 using LiloShop.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using System.Data.SqlTypes;
 using System.Diagnostics;
-using System.Net.WebSockets;
-using System.Runtime.CompilerServices;
 
 namespace LiloShop
 {
@@ -947,8 +943,33 @@ namespace LiloShop
                     foreach(var p in lowStock)
                         Console.WriteLine($"{p.Name} - {p.StockQuantity} kvar");
 
-                
+
+                //Stamkunder
+                var frequentCustomerQ = """
+                    SELECT
+                        c.Name,
+                        c.Email,
+                        COUNT(o.Id) AS OrderCount
+                    FROM Customers c
+                    JOIN Orders o ON o.CustomerId = c.Id
+                    GROUP BY c.Name, c.Email
+                    HAVING COUNT(o.Id) > 2
+                    ORDER BY OrderCount DESC
+                    """;
+
+                Console.WriteLine("\nKunder med fler än 2 beställningar: ");
+                var frequentCustomer = conn.Query(frequentCustomerQ).ToList();
+
+                if(!frequentCustomer.Any())
+                    Console.WriteLine("Inga stamkunder hittades");
+                else
+                    foreach(var p in frequentCustomer)
+                        Console.WriteLine($"{p.Name} ({p.Email}) - {p.OrderCount} ordrar");
             }
+
+            Console.WriteLine("\nTryck enter för att gå vidare");
+            Console.ReadLine();
+            RenderAdminMenu();
 
         }
         private static void RenderCreateProduct()
@@ -1009,7 +1030,9 @@ namespace LiloShop
                 Color = color,
                 Size = size,
                 CategoryId = categoryId,
-                IsSpecialOffer = isOffer
+                IsSpecialOffer = isOffer,
+                StockQuantity = stock,
+                Supplier = supplier
             };
 
             try
